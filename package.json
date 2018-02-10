@@ -1,0 +1,24 @@
+{
+  "name": "samemail",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "GPL-3.0",
+  "devDependencies": {
+    "eslint-config-standard": "^11.0.0-beta.0",
+    "eslint-plugin-import": "^2.8.0",
+    "eslint-plugin-node": "^6.0.0",
+    "eslint-plugin-promise": "^3.6.0",
+    "eslint-plugin-standard": "^3.0.1"
+  },
+  "dependencies": {
+    "crc-32": "^1.2.0",
+    "eslint": "^4.17.0",
+    "eslint-config-standart": "^0.2.0",
+    "lodash": "^4.17.5"
+  }
+}
