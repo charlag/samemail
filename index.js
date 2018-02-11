@@ -6,6 +6,9 @@ const NUM_HASHES = 20
 const MAX_SHINGLE_ID = Math.pow(2, 32) - 1
 // This one should be found by some heuristic too
 const SUSPICIOUS_COLLISION_THRESHOLD = 0.45
+// Coefficient which will be appliet to the suspicious rating if both emails are
+// from the same address
+const SAME_ADDRESS_COEFF = 2
 
 /**
  * Calculates number of the equal elements in the same positions. Similar to
@@ -24,13 +27,6 @@ const arrayIntersectionSize = (arr1, arr2) => {
   }
   return count
 }
-
-/**
- * Calculate average of the numeric array (sum / length)
- * @param {array<number>} arr Array to calculate avarage of
- * @return {number} Average of the array
- */
-const average = (arr) => arr.reduce((acc, el) => acc + el, 0) / arr.length
 
 /**
  * Make ngrams [sequences of length n]
@@ -84,18 +80,14 @@ const generateRandomCoeffs = (size, maxId) => {
   return array
 }
 
-const documents = fs.readFileSync('data/mails.train', 'utf8')
-      .split('\n')
-      .map(line => {
-        const idLength = line.indexOf(' ')
-        const id = line.substring(0, idLength)
-        const content = line.substring(idLength + 1)
-        return {
-          id,
-          content
-        }
-      })
-
+/**
+  * Function which generates 'shingles' (all sequences of length hashed).
+  * Example: 'I write code in ES 6' would generate ngrams
+  * 'I write code', 'write code in', 'code in ES', 'in ES 6'. Each of these
+  * would be hashed.
+  * @param {string} str String from which shingles will be made.
+  * @return {array<Number>} Hashed shingles
+  */
 const makeShingles = (str) => {
   const ngrams = makeWordNgrams(str)
   return ngrams.map(ngram => {
@@ -105,13 +97,18 @@ const makeShingles = (str) => {
   })
 }
 
-const shingles = documents.map(({content}) => makeShingles(content))
-
+/**
+  * Generate signatures to identify emails according to MinHash algorithm.
+  * @oaram {array<Number>} shingles Shingles to use for signatures
+  * @param {Number} hashesNumber Number of hashes which will be generated
+  * @param {Number} maxShingleId Upper bound for generated IDs
+  * @return {array<Number>} Signatures which represent shingles in compact form
+  */
 const generateSignatures = (shingles, hashesNumber, maxShingleId) => {
   let nextPrime = 4294967311
 
-  const coeffA = generateRandomCoeffs(shingles, maxShingleId)
-  const coeffB = generateRandomCoeffs(shingles, maxShingleId)
+  const coeffA = generateRandomCoeffs(shingles.length, maxShingleId)
+  const coeffB = generateRandomCoeffs(shingles.length, maxShingleId)
 
   const universalHash = (i, shingle) =>
         (coeffA[i] * shingle + coeffB[i]) % nextPrime
@@ -136,49 +133,123 @@ const generateSignatures = (shingles, hashesNumber, maxShingleId) => {
   })
 }
 
-const signatures = generateSignatures(shingles, NUM_HASHES, MAX_SHINGLE_ID)
-const documentsSize = shingles.length
+/**
+ * Calculate similarities matrix for the signatures array. Each signature is an
+ * array. This function calculates how many positions are the same for any given
+ * pair.
+ * @param {array<array<number>>} signatures matrix with signatures which will be
+ * checked for similarity.
+ * @return {array<<array<number>>} Pairwise similarities. Only upper-right half
+ * of the matrix is filled.
+ */
+const calculateSimilarities = (signatures) => {
+  const distances = signatures.map(i => Array.from(
+    new Array(signatures.length),
+    () => 0
+  ))
 
-// documentsSize * documentsSize matrix
-const estimates = Array.from(Array(documentsSize), (i) => {
-  return new Array(documentsSize)
-})
-
-const emailsRating = {}
-
-for (let i = 0; i < documentsSize - 1; i++) {
-  const firstSignature = signatures[i]
-  for (let j = i + 1; j < documentsSize; j++) {
-    const secondSignature = signatures[j]
-    const intersectionSize = arrayIntersectionSize(firstSignature, secondSignature)
-    const estimate = intersectionSize / NUM_HASHES
-    estimates[i][j] = estimate
-    const dangerous = estimate >= SUSPICIOUS_COLLISION_THRESHOLD
-    const warnSign = dangerous ? '!' : ''
-    console.log(`${documents[i].id} & ${documents[j].id}: ${Number(estimate).toFixed(2)}      ${warnSign}`)
-    const prevI = emailsRating[i] || 0
-    const prevJ = emailsRating[j] || 0
-    const addScoreI = dangerous ? prevI + estimate + 0.1 : 0
-    const addScoreJ = dangerous ? prevJ + estimate + 0.1 : 0
-    emailsRating[i] = prevI + addScoreI
-    emailsRating[j] = prevJ + addScoreJ
+  for (let i = 0; i < signatures.length - 1; i++) {
+    const firstSignature = signatures[i]
+    for (let j = i + 1; j < signatures.length; j++) {
+      const secondSignature = signatures[j]
+      const intersectionSize = arrayIntersectionSize(firstSignature, secondSignature)
+      const estimate = intersectionSize / NUM_HASHES
+      distances[i][j] = estimate
+    }
   }
-  console.log('------------')
+  return distances
 }
 
-const averageRating = average(Object.values(emailsRating))
-console.log(`Average rating: ${averageRating}`)
-console.log('Emails rating: ')
-for (let i = 0; i < documentsSize; i++) {
-  const rating = emailsRating[i]
-  console.log(`${documents[i].id}: ${rating}`)
+/**
+ * Function which calculates emails spam rating by matrix of similarities.
+ * The bigger the rating - the higher chance that email is a spam.
+ * This implementation takes into account sender address.
+ * @param {array<array<int>} similarities Matrix of similarities
+ * @param {array<string>} emailIds Array of EmailIDs. Should have the same order
+ * as similarities matrix
+ * @param {function} emailById Function to fetch email by specified ID
+ * @return {object} Object with keys as emailIds and values as ratings
+ */
+const calculateRatingsActual = (similarities, emailIds, emailById) => {
+  const length = emailIds.length
+  const emailsRating = {}
+
+  for (let i = 0; i < length - 1; i++) {
+    for (let j = i + 1; j < length; j++) {
+      const similarity = similarities[i][j]
+      const firstId = emailIds[i]
+      const secondId = emailIds[j]
+      let prevI = emailsRating[firstId] || 0
+      let prevJ = emailsRating[secondId] || 0
+      let newI = prevI
+      let newJ = prevJ
+      if (similarity > SUSPICIOUS_COLLISION_THRESHOLD) {
+        const firstEmail = emailById(firstId)
+        const secondEmail = emailById(secondId)
+        // While this implementation takes into account the sender, it could
+        // be much smarter and raise rating of all emails by specified sender
+        // by some fraction. We also don't analyse email contents itself while
+        // it could improve accuracy a lot.
+        const senderCoeff = firstEmail.sender === secondEmail.sender
+              ? SAME_ADDRESS_COEFF : 1
+        const finalCoeff = similarity * senderCoeff + 0.1
+        newI = prevI + finalCoeff
+        newJ = prevJ + finalCoeff
+      }
+      emailsRating[firstId] = newI
+      emailsRating[secondId] = newJ
+    }
+  }
+  return emailsRating
 }
 
-// const calculateRatings = (emailIterator) => {
-//   const ids = []
-//   const shingles = []
-//   for (let email of emailIterator) {
-//     ids.push(email.id)
-//     shingles.push(makeShingles)
-//   }
-// }
+const averageObjValue = (obj) => {
+  const values = Object.values(obj)
+  return values.reduce((acc, cur) => acc + cur) / values.length
+}
+
+/**
+ * Calculate ratings for each email in the emails database.
+ * Each email should be an object with the following fields:
+ * id: string
+ * sender: string
+ * topic: string
+ * content: string
+ * @param {Iterable<Object>} emailIterator Iterable object with emails
+ */
+  const calculateRatings = (emailIds, getEmailById) => {
+    const shingles = emailIds.map(emailId =>
+                                  makeShingles(getEmailById(emailId).content))
+
+    const signatures = generateSignatures(shingles,
+                                          NUM_HASHES,
+                                          MAX_SHINGLE_ID)
+    const similarities = calculateSimilarities(signatures)
+    const emailsRating = calculateRatingsActual(similarities, emailIds, getEmailById)
+
+    const averageRating = averageObjValue(emailsRating)
+    return {
+      averageRating,
+      ratings: emailsRating
+  }
+}
+
+module.exports.caclulateRatings = calculateRatings
+
+const documents = fs.readFileSync('data/mails.train', 'utf8')
+      .split('\n')
+      .map(line => {
+        const idLength = line.indexOf(' ')
+        const id = line.substring(0, idLength)
+        const content = line.substring(idLength + 1)
+        return {
+          id,
+          content
+        }
+      })
+
+const ratings = calculateRatings(
+  documents.map(d => d.id),
+  (id) => documents.find(d => d.id === id)
+)
+console.log(JSON.stringify(ratings, null, 2))
