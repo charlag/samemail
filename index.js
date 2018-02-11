@@ -96,22 +96,22 @@ const documents = fs.readFileSync('data/mails.train', 'utf8')
         }
       })
 
-const shingles = documents.map(({content}) => {
-  const ngrams = makeWordNgrams(content)
-  const shinglesForDoc = ngrams.map(ngram => {
+const makeShingles = (str) => {
+  const ngrams = makeWordNgrams(str)
+  return ngrams.map(ngram => {
     const [f, s, t] = ngram
     const ngramStr = `${f} ${s} ${t}`
     return crc32.str(ngramStr)
   })
-  return shinglesForDoc
-})
+}
 
-const documentsSize = Object.keys(documents).length
-const coeffA = generateRandomCoeffs(documentsSize, MAX_SHINGLE_ID)
-const coeffB = generateRandomCoeffs(documentsSize, MAX_SHINGLE_ID)
+const shingles = documents.map(({content}) => makeShingles(content))
 
-const signatures = (() => {
+const generateSignatures = (shingles, hashesNumber, maxShingleId) => {
   let nextPrime = 4294967311
+
+  const coeffA = generateRandomCoeffs(shingles, maxShingleId)
+  const coeffB = generateRandomCoeffs(shingles, maxShingleId)
 
   const universalHash = (i, shingle) =>
         (coeffA[i] * shingle + coeffB[i]) % nextPrime
@@ -119,7 +119,7 @@ const signatures = (() => {
   return shingles.map(shinglesForDoc => {
     const signature = []
 
-    for (let i = 0; i < NUM_HASHES; i++) {
+    for (let i = 0; i < hashesNumber; i++) {
       let minHashCode = nextPrime + 1
 
       for (let shingle of shinglesForDoc) {
@@ -134,7 +134,10 @@ const signatures = (() => {
     }
     return signature
   })
-})()
+}
+
+const signatures = generateSignatures(shingles, NUM_HASHES, MAX_SHINGLE_ID)
+const documentsSize = shingles.length
 
 // documentsSize * documentsSize matrix
 const estimates = Array.from(Array(documentsSize), (i) => {
@@ -170,3 +173,12 @@ for (let i = 0; i < documentsSize; i++) {
   const rating = emailsRating[i]
   console.log(`${documents[i].id}: ${rating}`)
 }
+
+// const calculateRatings = (emailIterator) => {
+//   const ids = []
+//   const shingles = []
+//   for (let email of emailIterator) {
+//     ids.push(email.id)
+//     shingles.push(makeShingles)
+//   }
+// }
