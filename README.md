@@ -1,9 +1,9 @@
 # samemail
-A little experiment to detect similar emails using variant of MinHash algorithm
+A little experiment to detect similar emails using variant of MinHash algorithm.
 
 For information on the algorithm please check [Mining of Massive Datasets](http://www.mmds.org/) course, Chapter 3 in particular.
 
-Another good explanation is in this article: [MinHash Tutorial with Python](http://mccormickml.com/2015/06/12/minhash-tutorial-with-python-code/)
+Another good explanation is in this article: [MinHash Tutorial with Python](http://mccormickml.com/2015/06/12/minhash-tutorial-with-python-code/).
 
 # API
 
@@ -78,4 +78,7 @@ console.log(JSON.stringify(ratings, null, 2))
 }
 */
 ```
+
+![Jake the mailman](http://67.media.tumblr.com/tumblr_md787xAplD1rnrne9o1_1280.png)
+Image by http://irogh.tumblr.com
 
