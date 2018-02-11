@@ -1,3 +1,6 @@
+// Run tests on prepared data. Ideally first 10 emails whould be considered
+// suspicious while others should have low rating (be clean)
+
 const fs = require('fs')
 const samemail = require('./lib')
 
