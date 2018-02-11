@@ -5,6 +5,17 @@ For information on the algorithm please check [Mining of Massive Datasets](http:
 
 Another good explanation is in this article: [MinHash Tutorial with Python](http://mccormickml.com/2015/06/12/minhash-tutorial-with-python-code/).
 
+## Testing
+Unit tests:
+```
+npm test
+```
+Running on a test data:
+```
+npm run testOnData
+```
+t0010 - t0015 should have low rating while other emails should have higher-than-average rating. Results may differ from run to run.
+
 # API
 
 ## `calculateRatings`
