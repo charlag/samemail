@@ -75,7 +75,7 @@ console.log(JSON.stringify(ratings, null, 2))
     "t0014": 0,
     "t0015": 0
   }
-*/
 }
+*/
 ```
 
